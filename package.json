@@ -1,0 +1,52 @@
+{
+  "name": "zola",
+  "version": "1.0.0",
+  "description": "A lightweight, powerful Claude Code alternative powered by Groq LLM in TypeScript",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "zola": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx tests/test_tools.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "claude-code",
+    "groq",
+    "ai",
+    "coding-agent",
+    "llm",
+    "cli",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@inquirer/prompts": "^8.7.1",
+    "boxen": "^8.0.1",
+    "chalk": "^6.0.0",
+    "commander": "^15.0.0",
+    "diff": "^9.0.0",
+    "dotenv": "^17.4.2",
+    "fast-glob": "^3.3.3",
+    "groq-sdk": "^1.6.0",
+    "marked": "^15.0.12",
+    "marked-terminal": "^7.3.0",
+    "ora": "^9.4.1"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.2",
+    "@types/marked-terminal": "^6.1.1",
+    "@types/node": "^26.4.1",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}
