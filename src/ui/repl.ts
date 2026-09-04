@@ -13,7 +13,7 @@ export async function startRepl(agent: Agent): Promise<void> {
     let userInput: string;
     try {
       userInput = await input({
-        message: chalk.hex("#FF7A00")("❯"),
+        message: chalk.hex("#FF7A00")(":❯"),
       });
     } catch (err: any) {
       // User pressed Ctrl+C or exited

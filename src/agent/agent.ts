@@ -89,7 +89,7 @@ export class Agent {
 
       // Check if model decided to make tool calls
       if (result.toolCalls && result.toolCalls.length > 0) {
-        this.context.addAssistantMessage(
+        this.context.addAssistantMessage( 
           result.content || null,
           result.toolCalls
         );
