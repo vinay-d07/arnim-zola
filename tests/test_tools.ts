@@ -111,20 +111,37 @@ async function runTests() {
 
   // Test 9: Conversation Context & Compaction
   console.log("\n5. Conversation Context & Compaction:");
-  const conv = new ConversationContext(process.cwd(), "openai/gpt-oss-20b");
-  conv.addUserMessage("First question");
-  conv.addAssistantMessage("First answer");
-  conv.addUserMessage("Second question");
-  conv.addAssistantMessage(null, [{ id: "c1", type: "function", function: { name: "view_file", arguments: "{}" } }]);
-  conv.addToolMessage("c1", "File content result");
-  conv.addUserMessage("Third question");
-  conv.addAssistantMessage("Third answer");
 
-  assert(conv.getMessages().length > 6, "Added conversation turns");
-  const compacted = conv.compact();
+  // A small conversation is nowhere near the context window and should be left alone
+  const smallConv = new ConversationContext(process.cwd(), "openai/gpt-oss-20b");
+  smallConv.addUserMessage("First question");
+  smallConv.addAssistantMessage("First answer");
+  smallConv.addUserMessage("Second question");
+  smallConv.addAssistantMessage(null, [{ id: "c1", type: "function", function: { name: "view_file", arguments: "{}" } }]);
+  smallConv.addToolMessage("c1", "File content result");
+  smallConv.addUserMessage("Third question");
+  smallConv.addAssistantMessage("Third answer");
+
+  assert(smallConv.getMessages().length > 6, "Added conversation turns");
+  assert(!smallConv.shouldAutoCompact(), "Small conversation does not trigger auto-compaction");
+  assert(smallConv.compact() === false, "Compact is a no-op on a small conversation");
+
+  // A large conversation that eats into the model's context window should compact down
+  const bigConv = new ConversationContext(process.cwd(), "openai/gpt-oss-20b");
+  const padding = "x".repeat(12000); // large enough that 20 turns clears the 75% auto-compact threshold
+  for (let i = 0; i < 20; i++) {
+    bigConv.addUserMessage(`Question ${i}: ${padding}`);
+    bigConv.addAssistantMessage(`Answer ${i}: ${padding}`);
+  }
+  const originalLength = bigConv.getMessages().length;
+  assert(bigConv.shouldAutoCompact(), "Large conversation flagged as approaching context window limit");
+  const compacted = bigConv.compact();
   assert(compacted, "Context compaction succeeded");
-  conv.recordUsage(1500, 300);
-  const stats = conv.getUsageStats();
+  assert(bigConv.getMessages().length < originalLength, "Compaction reduced message count");
+  assert(!bigConv.shouldAutoCompact(), "Compaction brought context back under the threshold");
+
+  bigConv.recordUsage(1500, 300);
+  const stats = bigConv.getUsageStats();
   assert(stats.totalTokens === 1800, "Token usage tracking accurate");
   assert(stats.estimatedCost > 0, "Cost estimation computed");
 

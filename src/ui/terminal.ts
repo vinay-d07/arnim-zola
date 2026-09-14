@@ -160,6 +160,14 @@ export class TerminalUI {
     );
   }
 
+  public static printContextUsage(usedTokens: number, contextWindow: number): void {
+    const pct = Math.min(100, (usedTokens / contextWindow) * 100);
+    const color = pct >= 85 ? chalk.red : pct >= 60 ? chalk.yellow : chalk.dim;
+    console.log(
+      color(`Context: ~${usedTokens.toLocaleString()} / ${contextWindow.toLocaleString()} tokens (${pct.toFixed(0)}%)`)
+    );
+  }
+
   public static printTokenStats(
     promptTokens: number,
     completionTokens: number,

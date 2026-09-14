@@ -59,6 +59,7 @@ export const viewFileTool: Tool = {
       const rawContent = fs.readFileSync(fullPath, "utf-8");
       const lines = rawContent.split(/\r?\n/);
       const totalLines = lines.length;
+      const MAX_DEFAULT_LINES = 2000;
 
       let start = params.start_line ? Math.max(1, params.start_line) : 1;
       let end = params.end_line ? Math.min(totalLines, params.end_line) : totalLines;
@@ -74,6 +75,13 @@ export const viewFileTool: Tool = {
         start = end;
       }
 
+      // Guard against dumping huge files into the model's context window when no explicit range was requested
+      let truncationNotice = "";
+      if (!params.start_line && !params.end_line && end - start + 1 > MAX_DEFAULT_LINES) {
+        end = start + MAX_DEFAULT_LINES - 1;
+        truncationNotice = `\n\n[Truncated: showing lines ${start}-${end} of ${totalLines}. Pass start_line/end_line to view a different range.]`;
+      }
+
       const selectedLines = lines.slice(start - 1, end);
       const formatted = selectedLines
         .map((line, idx) => {
@@ -84,7 +92,7 @@ export const viewFileTool: Tool = {
 
       return {
         success: true,
-        output: `File: ${params.file_path} (Lines ${start}-${end} of ${totalLines}, ${stat.size} bytes)\n\n${formatted}`,
+        output: `File: ${params.file_path} (Lines ${start}-${end} of ${totalLines}, ${stat.size} bytes)\n\n${formatted}${truncationNotice}`,
         metadata: {
           filePath: fullPath,
           totalLines,

@@ -1,4 +1,4 @@
-import { Groq } from "groq-sdk";
+import { Groq, APIConnectionError, BadRequestError, InternalServerError, RateLimitError } from "groq-sdk";
 import { GroqToolFunction } from "../tools/types.js";
 
 export interface ChatMessage {
@@ -22,6 +22,7 @@ export interface StreamCallbacks {
   onToken?: (token: string) => void;
   onReasoning?: (reasoningToken: string) => void;
   onToolCallStart?: (index: number, name: string) => void;
+  onRetry?: (attempt: number, maxAttempts: number, reason: string) => void;
 }
 
 export interface CompletionResult {
@@ -51,10 +52,44 @@ export class GroqClient {
     return this.model;
   }
 
+  /** Transient failures worth retrying: the model itself glitched, not a real request error. */
+  private isRetryableError(err: any): boolean {
+    if (err instanceof RateLimitError) return true;
+    if (err instanceof InternalServerError) return true;
+    if (err instanceof APIConnectionError) return true;
+    // The model streamed malformed JSON for a tool call's arguments; Groq rejects the
+    // whole completion server-side. Re-sampling the same request usually produces valid JSON.
+    if (err instanceof BadRequestError && /parse tool call arguments/i.test(err.message || "")) {
+      return true;
+    }
+    return false;
+  }
+
   public async streamCompletion(
     messages: ChatMessage[],
     tools: GroqToolFunction[],
-    callbacks: StreamCallbacks = {}
+    callbacks: StreamCallbacks = {},
+    maxRetries = 2
+  ): Promise<CompletionResult> {
+    let attempt = 0;
+    while (true) {
+      try {
+        return await this.runCompletion(messages, tools, callbacks);
+      } catch (err: any) {
+        attempt++;
+        if (attempt > maxRetries || !this.isRetryableError(err)) {
+          throw err;
+        }
+        callbacks.onRetry?.(attempt, maxRetries, err.message);
+        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+      }
+    }
+  }
+
+  private async runCompletion(
+    messages: ChatMessage[],
+    tools: GroqToolFunction[],
+    callbacks: StreamCallbacks
   ): Promise<CompletionResult> {
     const formattedTools = tools.length > 0 ? (tools as any) : undefined;
 

@@ -55,6 +55,7 @@ ${gitInfo}
 2. **File Modifications**:
    - Prefer 'edit_file' for small to medium edits to preserve surrounding code and formatting. Ensure 'old_string' exactly matches existing content.
    - Use 'write_file' when creating new files or when completely rewriting small files.
+   - **CRITICAL**: If the user asks you to create, write, save, or generate a file (or multiple files), you MUST call 'write_file' for each one. NEVER respond by printing the file's full contents as a markdown code block instead of calling the tool — that does not save anything to disk and fails the user's request. Code blocks in chat are only for short illustrative snippets inside an explanation, never a substitute for actually writing the file.
 
 3. **Running Terminal Commands**:
    - Use 'run_command' to run builds, tests, linting, package installations, or git operations.

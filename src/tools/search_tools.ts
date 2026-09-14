@@ -90,6 +90,7 @@ export const grepSearchTool: Tool = {
       });
 
       const matches: { file: string; line: number; content: string }[] = [];
+      const MAX_LINE_LEN = 300;
 
       for (const file of files) {
         if (!isTextFile(file)) continue;
@@ -103,10 +104,11 @@ export const grepSearchTool: Tool = {
             regex.lastIndex = 0;
             if (regex.test(line)) {
               const relPath = path.relative(context.cwd, file);
+              const trimmed = line.trim();
               matches.push({
                 file: relPath,
                 line: i + 1,
-                content: line.trim(),
+                content: trimmed.length > MAX_LINE_LEN ? trimmed.slice(0, MAX_LINE_LEN) + "...[truncated]" : trimmed,
               });
 
               if (matches.length >= maxResults) {

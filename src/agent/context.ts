@@ -60,6 +60,21 @@ export class ConversationContext {
     this.totalCompletionTokens += completionTokens;
   }
 
+  /** Rough token estimate (chars/4) of the messages that would actually be sent on the next turn. */
+  public estimateCurrentTokens(): number {
+    return Math.ceil(JSON.stringify(this.messages).length / 4);
+  }
+
+  public getContextWindow(): number {
+    return AVAILABLE_MODELS[this.model]?.contextWindow || 64000;
+  }
+
+  /** True once the live message history is eating too much of the model's context window. */
+  public shouldAutoCompact(threshold = 0.75): boolean {
+    if (this.messages.length <= 4) return false;
+    return this.estimateCurrentTokens() >= this.getContextWindow() * threshold;
+  }
+
   public getUsageStats(): {
     promptTokens: number;
     completionTokens: number;
@@ -84,7 +99,9 @@ export class ConversationContext {
   }
 
   /**
-   * Compacts conversation history by condensing older exchanges into a summary
+   * Compacts conversation history by condensing older exchanges into a summary.
+   * Keeps a token-budgeted window of recent messages verbatim, snapped back to the
+   * nearest user-turn boundary so an assistant tool_call is never split from its tool result.
    */
   public compact(): boolean {
     if (this.messages.length <= 4) {
@@ -92,8 +109,28 @@ export class ConversationContext {
     }
 
     const systemMsg = this.messages[0];
-    const recentMessages = this.messages.slice(-4);
-    const middleMessages = this.messages.slice(1, -4);
+    const recentBudgetTokens = Math.max(500, Math.floor(this.getContextWindow() * 0.15));
+
+    let boundary = this.messages.length;
+    let tokens = 0;
+    while (boundary > 1) {
+      const msgTokens = Math.ceil(JSON.stringify(this.messages[boundary - 1]).length / 4);
+      if (tokens > 0 && tokens + msgTokens > recentBudgetTokens) break;
+      tokens += msgTokens;
+      boundary--;
+    }
+
+    // Snap forward to the next user-turn start so we never split a tool_call from its tool result
+    while (boundary < this.messages.length && this.messages[boundary].role !== "user") {
+      boundary++;
+    }
+
+    if (boundary <= 1 || boundary >= this.messages.length) {
+      return false; // nothing meaningful to compact
+    }
+
+    const recentMessages = this.messages.slice(boundary);
+    const middleMessages = this.messages.slice(1, boundary);
 
     let summary = "Summary of previous conversation actions and discoveries:\n";
     for (const msg of middleMessages) {

@@ -75,17 +75,17 @@ export const bashTool: Tool = {
 
         child.stdout.on("data", (data) => {
           stdoutData += data.toString();
-          // Prevent memory issues if command prints megabytes of logs
-          if (stdoutData.length > 200000) {
-            stdoutData = stdoutData.slice(0, 200000) + "\n... [Output truncated at 200KB]";
+          // Cap output early to keep tool results from flooding the model's context window
+          if (stdoutData.length > 10000) {
+            stdoutData = stdoutData.slice(0, 10000) + "\n... [Output truncated at 10KB. Re-run with a more targeted command, e.g. piping through 'grep' or 'tail', to see more.]";
             child.kill();
           }
         });
 
         child.stderr.on("data", (data) => {
           stderrData += data.toString();
-          if (stderrData.length > 50000) {
-            stderrData = stderrData.slice(0, 50000) + "\n... [Stderr truncated at 50KB]";
+          if (stderrData.length > 4000) {
+            stderrData = stderrData.slice(0, 4000) + "\n... [Stderr truncated at 4KB]";
           }
         });
 

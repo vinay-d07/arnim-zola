@@ -88,6 +88,10 @@ async function handleSlashCommand(
         stats.estimatedCost,
         agent.getConfig().model
       );
+      TerminalUI.printContextUsage(
+        agent.getContext().estimateCurrentTokens(),
+        agent.getContext().getContextWindow()
+      );
       return "handled";
 
     case "/model":

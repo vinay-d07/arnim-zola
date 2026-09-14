@@ -44,6 +44,13 @@ export class Agent {
 
     while (currentTurn < maxTurns) {
       currentTurn++;
+
+      if (this.context.shouldAutoCompact()) {
+        if (this.context.compact()) {
+          TerminalUI.info("Context automatically compacted to stay within the model's context window.");
+        }
+      }
+
       const tools = this.registry.getGroqTools();
       const messages = this.context.getMessages();
 
@@ -70,6 +77,13 @@ export class Agent {
           },
           onToolCallStart: (index, name) => {
             if (spinner.isSpinning) spinner.stop();
+          },
+          onRetry: (attempt, maxAttempts, reason) => {
+            if (spinner.isSpinning) spinner.stop();
+            TerminalUI.warning(
+              `Groq had a transient error (${reason}). Retrying ${attempt}/${maxAttempts}...`
+            );
+            spinner.start();
           },
         });
       } catch (err: any) {
@@ -110,6 +124,8 @@ export class Agent {
     if (currentTurn >= maxTurns) {
       TerminalUI.warning(`Reached maximum turn limit of ${maxTurns}.`);
     }
+
+    TerminalUI.printContextUsage(this.context.estimateCurrentTokens(), this.context.getContextWindow());
   }
 
   private async handleToolCall(tc: GroqToolCall): Promise<void> {
