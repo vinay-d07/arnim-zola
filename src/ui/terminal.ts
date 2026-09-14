@@ -21,7 +21,7 @@ marked.use(
 );
 
 export class TerminalUI {
-  public static banner(version = "1.0.0", modelName = "openai/gpt-oss-20b"): void {
+  public static banner(version = "1.0.0", modelName = "openai/gpt-oss-120b"): void {
     const title = chalk.bold.hex("#FF7A00")("ARNIM ZOLA") + chalk.dim(` v${version}`);
     const subtitle = chalk.cyan("A light-weight open-source AI code agent powered by Groq LLM");
     const info = [
@@ -148,6 +148,11 @@ export class TerminalUI {
       `  ${chalk.cyan("grep_search")}       Regex/text search across all code files`,
       `  ${chalk.cyan("find_files")}        Glob file search across repository`,
       `  ${chalk.cyan("run_command")}       Execute terminal/shell commands`,
+      `  ${chalk.cyan("scaffold_project")}  Generate a new app with the official CLI (Vite/Next/Express)`,
+      `  ${chalk.cyan("todo_write")}        Track a multi-step task list across turns`,
+      "",
+      chalk.dim("File writes/edits automatically trigger the project's build/typecheck/test command;"),
+      chalk.dim("failures are fed back to the model as required fixes before it can report success."),
     ].join("\n");
 
     console.log(

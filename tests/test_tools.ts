@@ -31,10 +31,10 @@ async function runTests() {
   // Test 1: Tool Registry
   console.log("1. Tool Registry & Schemas:");
   const tools = registry.getAllTools();
-  assert(tools.length === 7, "Registered 7 built-in tools");
+  assert(tools.length === 9, "Registered 9 built-in tools");
 
   const groqTools = registry.getGroqTools();
-  assert(groqTools.length === 7, "Generated 7 Groq-compatible tool schemas");
+  assert(groqTools.length === 9, "Generated 9 Groq-compatible tool schemas");
   assert(
     groqTools.every((t) => t.type === "function" && t.function.name && t.function.parameters),
     "All tools conform to OpenAI/Groq function format"
@@ -109,8 +109,48 @@ async function runTests() {
   assert(bashRes.success, "run_command succeeded", bashRes.output);
   assert(bashRes.output.includes("GROQ_CODE_TEST_OK"), "run_command captured stdout");
 
-  // Test 9: Conversation Context & Compaction
-  console.log("\n5. Conversation Context & Compaction:");
+  // Test 9: todo_write Tool
+  console.log("\n5. Task Tracking (todo_write):");
+  const todoRes = await registry.executeTool(
+    "todo_write",
+    { todos: [{ id: "1", content: "Set up project structure", status: "in_progress" }] },
+    context
+  );
+  assert(todoRes.success, "todo_write succeeded", todoRes.output);
+  assert(todoRes.output.includes("Set up project structure"), "todo_write output includes task content");
+  assert(registry.getTodoStore().getTodos().length === 1, "TodoStore reflects the written task list");
+
+  const badTodoRes = await registry.executeTool(
+    "todo_write",
+    {
+      todos: [
+        { id: "1", content: "Step one", status: "in_progress" },
+        { id: "2", content: "Step two", status: "in_progress" },
+      ],
+    },
+    context
+  );
+  assert(!badTodoRes.success, "todo_write rejects more than one in_progress item");
+
+  // Test: scaffold_project Tool (error paths only, to keep the suite offline/network-free)
+  console.log("\n6. Project Scaffolding (scaffold_project):");
+  const badTemplateRes = await registry.executeTool(
+    "scaffold_project",
+    { template: "not-a-real-template", project_name: "whatever" },
+    context
+  );
+  assert(!badTemplateRes.success, "scaffold_project rejects an unknown template");
+
+  fs.mkdirSync(path.join(testDir, "existing-app"));
+  const collisionRes = await registry.executeTool(
+    "scaffold_project",
+    { template: "vite-react-ts", project_name: "existing-app" },
+    context
+  );
+  assert(!collisionRes.success, "scaffold_project refuses to overwrite an existing directory");
+
+  // Test 10: Conversation Context & Compaction
+  console.log("\n7. Conversation Context & Compaction:");
 
   // A small conversation is nowhere near the context window and should be left alone
   const smallConv = new ConversationContext(process.cwd(), "openai/gpt-oss-20b");
@@ -129,6 +169,19 @@ async function runTests() {
   // A large conversation that eats into the model's context window should compact down
   const bigConv = new ConversationContext(process.cwd(), "openai/gpt-oss-20b");
   const padding = "x".repeat(12000); // large enough that 20 turns clears the 75% auto-compact threshold
+
+  // A file write near the start of the conversation, deep enough in the "middle" range that it
+  // will get summarized away by compaction — its file path must survive as a file-inventory entry.
+  bigConv.addUserMessage("Create src/app.ts");
+  bigConv.addAssistantMessage(null, [
+    {
+      id: "wc1",
+      type: "function",
+      function: { name: "write_file", arguments: JSON.stringify({ file_path: "src/app.ts", content: "// app" }) },
+    },
+  ]);
+  bigConv.addToolMessage("wc1", "Successfully wrote file");
+
   for (let i = 0; i < 20; i++) {
     bigConv.addUserMessage(`Question ${i}: ${padding}`);
     bigConv.addAssistantMessage(`Answer ${i}: ${padding}`);
@@ -140,17 +193,25 @@ async function runTests() {
   assert(bigConv.getMessages().length < originalLength, "Compaction reduced message count");
   assert(!bigConv.shouldAutoCompact(), "Compaction brought context back under the threshold");
 
+  const compactedSummary = bigConv.getMessages().find((m) => typeof m.content === "string" && m.content.includes("src/app.ts"));
+  assert(!!compactedSummary, "Compaction preserves the touched-files inventory (src/app.ts) instead of losing it");
+  assert(!!compactedSummary?.content?.includes("created/overwritten"), "Compacted file inventory records the action taken");
+
   bigConv.recordUsage(1500, 300);
   const stats = bigConv.getUsageStats();
   assert(stats.totalTokens === 1800, "Token usage tracking accurate");
   assert(stats.estimatedCost > 0, "Cost estimation computed");
 
-  // Test 10: Config & Models
-  console.log("\n6. Config & Model Management:");
+  // Test 11: Config & Models
+  console.log("\n8. Config & Model Management:");
   const cfg = new Config({ model: "openai/gpt-oss-120b", autoApprove: true });
   assert(cfg.model === "openai/gpt-oss-120b", "Config model set properly");
   assert(cfg.autoApprove === true, "Config autoApprove set properly");
   assert(Object.keys(AVAILABLE_MODELS).length >= 4, "Supported models available");
+
+  const defaultCfg = new Config({ apiKey: "dummy", autoApprove: true });
+  assert(defaultCfg.model === "openai/gpt-oss-120b", "Default model is the larger, more capable GPT-OSS 120B");
+  assert(defaultCfg.maxTurns === 60, "Default maxTurns raised to 60 for multi-file app builds");
 
   // Cleanup scratch directory
   try {

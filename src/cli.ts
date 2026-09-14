@@ -16,7 +16,7 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
     .option("-y, --yes", "Auto-approve all tool actions without interactive confirmation", false)
     .option("-k, --api-key <key>", "Groq API key")
     .option("-t, --temperature <temperature>", "Sampling temperature (default: 0.2)", parseFloat)
-    .option("--max-turns <turns>", "Maximum reasoning turns per prompt (default: 30)", parseInt)
+    .option("--max-turns <turns>", "Maximum reasoning turns per prompt (default: 60)", parseInt)
     .option("-d, --cwd <path>", "Custom working directory for operations")
     .helpOption("-h, --help", "Display help information");
 

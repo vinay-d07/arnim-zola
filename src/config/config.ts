@@ -22,21 +22,21 @@ export interface ModelOption {
 }
 
 export const AVAILABLE_MODELS: Record<string, ModelOption> = {
-  "openai/gpt-oss-20b": {
-    id: "openai/gpt-oss-20b",
-    name: "GPT-OSS 20B (Default)",
-    description: "Fast, highly capable model for code generation and function calling",
-    contextWindow: 131072,
-    inputPricePerMillion: 0.20,
-    outputPricePerMillion: 0.40,
-  },
   "openai/gpt-oss-120b": {
     id: "openai/gpt-oss-120b",
-    name: "GPT-OSS 120B",
-    description: "Flagship 120B model for complex architecture, reasoning and coding tasks",
+    name: "GPT-OSS 120B (Default)",
+    description: "Flagship 120B model for complex architecture, reasoning and coding tasks. Default because full app builds need the extra reasoning depth over the 20B model.",
     contextWindow: 131072,
     inputPricePerMillion: 0.59,
     outputPricePerMillion: 0.79,
+  },
+  "openai/gpt-oss-20b": {
+    id: "openai/gpt-oss-20b",
+    name: "GPT-OSS 20B",
+    description: "Fast, cheap model for quick edits and simple function calling. Not recommended for multi-file app generation.",
+    contextWindow: 131072,
+    inputPricePerMillion: 0.20,
+    outputPricePerMillion: 0.40,
   },
   "qwen/qwen3.8-27b": {
     id: "qwen/qwen3.8-27b",
@@ -56,7 +56,7 @@ export const AVAILABLE_MODELS: Record<string, ModelOption> = {
   },
 };
 
-export const DEFAULT_MODEL = "openai/gpt-oss-20b";
+export const DEFAULT_MODEL = "openai/gpt-oss-120b";
 
 export interface ConfigOptions {
   apiKey?: string;
@@ -101,7 +101,7 @@ export class Config {
       cliOptions.maxTurns ||
       (process.env.GROQ_MAX_TURNS ? parseInt(process.env.GROQ_MAX_TURNS, 10) : undefined) ||
       rcConfig.maxTurns ||
-      30;
+      60;
 
     this.cwd = cliOptions.cwd || process.cwd();
     this.temperature = cliOptions.temperature ?? rcConfig.temperature ?? 0.2;

@@ -132,6 +132,7 @@ export class ConversationContext {
     const recentMessages = this.messages.slice(boundary);
     const middleMessages = this.messages.slice(1, boundary);
 
+    // Narrative summary of what was asked/done (lossy, but cheap).
     let summary = "Summary of previous conversation actions and discoveries:\n";
     for (const msg of middleMessages) {
       if (msg.role === "user") {
@@ -142,6 +143,35 @@ export class ConversationContext {
       } else if (msg.role === "tool") {
         const preview = msg.content ? msg.content.substring(0, 60).replace(/\n/g, " ") : "";
         summary += `  └ Result: ${preview}...\n`;
+      }
+    }
+
+    // File inventory: the one thing that must NOT get lost to compaction, since forgetting which
+    // files already exist (and what was done to them) is what causes broken cross-file references
+    // in longer app-building sessions. Kept as a compact list, not full content.
+    const filesTouched = new Map<string, string>();
+    for (const msg of middleMessages) {
+      if (msg.role !== "assistant" || !msg.tool_calls) continue;
+      for (const tc of msg.tool_calls) {
+        if (tc.function.name !== "write_file" && tc.function.name !== "edit_file") continue;
+        try {
+          const args = JSON.parse(tc.function.arguments || "{}");
+          if (typeof args.file_path === "string" && args.file_path) {
+            filesTouched.set(
+              args.file_path,
+              tc.function.name === "write_file" ? "created/overwritten" : "edited"
+            );
+          }
+        } catch {
+          // Ignore malformed tool-call arguments; nothing to record for this call.
+        }
+      }
+    }
+
+    if (filesTouched.size > 0) {
+      summary += "\nFiles created or modified so far (re-view with view_file before editing again if you need exact current contents):\n";
+      for (const [file, action] of filesTouched) {
+        summary += `  - ${file} (${action})\n`;
       }
     }
 

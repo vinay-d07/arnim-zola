@@ -2,9 +2,13 @@ import { Tool, ToolContext, ToolResult, GroqToolFunction } from "./types.js";
 import { viewFileTool, writeFileTool, editFileTool, listDirTool } from "./file_tools.js";
 import { grepSearchTool, findFilesTool } from "./search_tools.js";
 import { bashTool } from "./bash_tool.js";
+import { scaffoldProjectTool } from "./scaffold_tool.js";
+import { createTodoWriteTool } from "./todo_tool.js";
+import { TodoStore } from "./todo_store.js";
 
 export class ToolRegistry {
   private tools: Map<string, Tool> = new Map();
+  private todoStore = new TodoStore();
 
   constructor() {
     this.registerTool(viewFileTool);
@@ -14,6 +18,12 @@ export class ToolRegistry {
     this.registerTool(grepSearchTool);
     this.registerTool(findFilesTool);
     this.registerTool(bashTool);
+    this.registerTool(scaffoldProjectTool);
+    this.registerTool(createTodoWriteTool(this.todoStore));
+  }
+
+  public getTodoStore(): TodoStore {
+    return this.todoStore;
   }
 
   public registerTool(tool: Tool): void {
