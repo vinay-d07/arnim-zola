@@ -210,7 +210,8 @@ async function runTests() {
   assert(Object.keys(AVAILABLE_MODELS).length >= 4, "Supported models available");
 
   const defaultCfg = new Config({ apiKey: "dummy", autoApprove: true });
-  assert(defaultCfg.model === "openai/gpt-oss-120b", "Default model is the larger, more capable GPT-OSS 120B");
+  assert(defaultCfg.model === "deepseek/deepseek-v4-pro", "Default model is DeepSeek V4 Pro on Velona");
+  assert(defaultCfg.getProvider().baseURL === "https://velona.in/v1", "Default model routes to the Velona OpenAI-compatible endpoint");
   assert(defaultCfg.maxTurns === 60, "Default maxTurns raised to 60 for multi-file app builds");
 
   // Cleanup scratch directory

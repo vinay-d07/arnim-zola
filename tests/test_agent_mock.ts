@@ -3,7 +3,7 @@ import path from "node:path";
 import { Config } from "../src/config/config.js";
 import { Agent } from "../src/agent/agent.js";
 import { ToolRegistry } from "../src/tools/registry.js";
-import { GroqClient, GroqToolCall } from "../src/agent/groq.js";
+import { ToolCall } from "../src/agent/llm.js";
 
 async function testAgentLoopWithMock() {
   console.log("🧪 Testing Agent Autonomous Loop (Mocked LLM Streaming)...\n");

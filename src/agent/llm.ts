@@ -1,4 +1,4 @@
-import { Groq, APIConnectionError, BadRequestError, InternalServerError, RateLimitError } from "groq-sdk";
+import OpenAI, { APIConnectionError, APIError, BadRequestError, InternalServerError, RateLimitError } from "openai";
 import { GroqToolFunction } from "../tools/types.js";
 
 export interface ChatMessage {
@@ -6,10 +6,10 @@ export interface ChatMessage {
   content: string | null;
   name?: string;
   tool_call_id?: string;
-  tool_calls?: GroqToolCall[];
+  tool_calls?: ToolCall[];
 }
 
-export interface GroqToolCall {
+export interface ToolCall {
   id: string;
   type: "function";
   function: {
@@ -27,19 +27,35 @@ export interface StreamCallbacks {
 
 export interface CompletionResult {
   content: string;
-  toolCalls: GroqToolCall[];
+  toolCalls: ToolCall[];
   finishReason: string;
   promptTokens: number;
   completionTokens: number;
+  /** False when the provider didn't stream a usage block and the token counts are a chars/4 guess. */
+  usageReported: boolean;
 }
 
-export class GroqClient {
-  private client: Groq;
+/** 413 isn't retryable by resending the same payload — the caller needs to shrink the request (compact context) first. */
+export function isPayloadTooLargeError(err: any): boolean {
+  return err?.status === 413;
+}
+
+/** Velona returns 402 when the prepaid wallet can't cover the request; retrying won't help. */
+export function isInsufficientCreditsError(err: any): boolean {
+  return err?.status === 402;
+}
+
+/**
+ * Thin streaming client over any OpenAI-compatible chat-completions endpoint (Velona, Groq, ...).
+ * The provider is selected purely by baseURL + key, so nothing below is provider-specific.
+ */
+export class LLMClient {
+  private client: OpenAI;
   private model: string;
   private temperature: number;
 
-  constructor(apiKey: string, model: string, temperature = 0.2) {
-    this.client = new Groq({ apiKey });
+  constructor(apiKey: string, baseURL: string, model: string, temperature = 0.2) {
+    this.client = new OpenAI({ apiKey, baseURL });
     this.model = model;
     this.temperature = temperature;
   }
@@ -52,17 +68,34 @@ export class GroqClient {
     return this.model;
   }
 
-  /** Transient failures worth retrying: the model itself glitched, not a real request error. */
+  /** Transient failures worth retrying: the model or upstream glitched, not a real request error. */
   private isRetryableError(err: any): boolean {
     if (err instanceof RateLimitError) return true;
+    // Covers Velona's 502 UPSTREAM_ERROR / 504 UPSTREAM_TIMEOUT as well as plain 500s.
     if (err instanceof InternalServerError) return true;
     if (err instanceof APIConnectionError) return true;
-    // The model streamed malformed JSON for a tool call's arguments; Groq rejects the
+    // The model streamed malformed JSON for a tool call's arguments and the provider rejected the
     // whole completion server-side. Re-sampling the same request usually produces valid JSON.
     if (err instanceof BadRequestError && /parse tool call arguments/i.test(err.message || "")) {
       return true;
     }
     return false;
+  }
+
+  /**
+   * How long to wait before retrying. Rate limits reset on their own schedule, so we honor the
+   * server's Retry-After header when present instead of guessing (both Groq and Velona send it).
+   */
+  private getRetryDelayMs(err: any, attempt: number): number {
+    if (err instanceof RateLimitError) {
+      const retryAfterHeader = (err as APIError).headers?.get?.("retry-after");
+      const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+      if (!Number.isNaN(retryAfterSeconds) && retryAfterSeconds > 0) {
+        return Math.min(retryAfterSeconds * 1000, 60000);
+      }
+      return Math.min(2000 * Math.pow(2, attempt - 1), 30000);
+    }
+    return Math.min(500 * attempt, 5000);
   }
 
   public async streamCompletion(
@@ -77,11 +110,15 @@ export class GroqClient {
         return await this.runCompletion(messages, tools, callbacks);
       } catch (err: any) {
         attempt++;
-        if (attempt > maxRetries || !this.isRetryableError(err)) {
+        // Rate limits clear on their own schedule rather than being a one-off glitch, so give them
+        // more attempts than a generic transient error before giving up.
+        const effectiveMaxRetries = err instanceof RateLimitError ? Math.max(maxRetries, 5) : maxRetries;
+        if (attempt > effectiveMaxRetries || !this.isRetryableError(err)) {
           throw err;
         }
-        callbacks.onRetry?.(attempt, maxRetries, err.message);
-        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+        const delayMs = this.getRetryDelayMs(err, attempt);
+        callbacks.onRetry?.(attempt, effectiveMaxRetries, err.message);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }
   }
@@ -100,6 +137,8 @@ export class GroqClient {
       tool_choice: formattedTools ? "auto" : undefined,
       temperature: this.temperature,
       stream: true,
+      // Ask for real token counts in the final chunk; context budgeting relies on them.
+      stream_options: { include_usage: true },
     });
 
     let fullContent = "";
@@ -107,8 +146,16 @@ export class GroqClient {
     let finishReason = "stop";
     let promptTokens = 0;
     let completionTokens = 0;
+    let usageReported = false;
 
     for await (const chunk of stream) {
+      // The usage chunk arrives with an empty `choices` array, so read it before skipping choiceless chunks.
+      if (chunk.usage) {
+        promptTokens = chunk.usage.prompt_tokens || 0;
+        completionTokens = chunk.usage.completion_tokens || 0;
+        usageReported = true;
+      }
+
       const choice = chunk.choices[0];
       if (!choice) continue;
 
@@ -116,21 +163,20 @@ export class GroqClient {
         finishReason = choice.finish_reason;
       }
 
-      const delta = choice.delta;
+      const delta = choice.delta as any;
 
-      // Handle reasoning content (e.g. DeepSeek R1 models)
-      if ((delta as any)?.reasoning) {
-        callbacks.onReasoning?.((delta as any).reasoning);
+      // Reasoning tokens: OpenRouter-backed gateways use `reasoning`, DeepSeek's native API uses `reasoning_content`.
+      const reasoning = delta?.reasoning ?? delta?.reasoning_content;
+      if (reasoning) {
+        callbacks.onReasoning?.(reasoning);
       }
 
-      // Handle content tokens
-      if (delta.content) {
+      if (delta?.content) {
         fullContent += delta.content;
         callbacks.onToken?.(delta.content);
       }
 
-      // Handle tool call chunks
-      if (delta.tool_calls) {
+      if (delta?.tool_calls) {
         for (const tc of delta.tool_calls) {
           const idx = tc.index;
           if (!toolCallsMap.has(idx)) {
@@ -150,22 +196,16 @@ export class GroqClient {
           }
         }
       }
-
-      // Capture usage if provided in chunk
-      if ((chunk as any).usage) {
-        promptTokens = (chunk as any).usage.prompt_tokens || 0;
-        completionTokens = (chunk as any).usage.completion_tokens || 0;
-      }
     }
 
     // Fallback token estimations if usage was not streamed
-    if (promptTokens === 0 && completionTokens === 0) {
+    if (!usageReported) {
       const msgStr = JSON.stringify(messages);
       promptTokens = Math.ceil(msgStr.length / 4);
       completionTokens = Math.ceil(fullContent.length / 4);
     }
 
-    const toolCalls: GroqToolCall[] = Array.from(toolCallsMap.entries())
+    const toolCalls: ToolCall[] = Array.from(toolCallsMap.entries())
       .sort(([a], [b]) => a - b)
       .map(([_, tc]) => ({
         id: tc.id,
@@ -182,6 +222,7 @@ export class GroqClient {
       finishReason,
       promptTokens,
       completionTokens,
+      usageReported,
     };
   }
 }

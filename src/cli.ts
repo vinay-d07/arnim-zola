@@ -9,12 +9,13 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
 
   program
     .name("groq-code")
-    .description("A high-speed, lightweight Claude Code alternative powered by Groq LLM")
+    .description("A lightweight Claude Code alternative for any OpenAI-compatible LLM provider (Velona, Groq)")
     .version("1.0.0")
     .argument("[prompt...]", "Optional one-shot prompt to execute")
-    .option("-m, --model <model>", "Groq model ID to use (e.g. llama-3.3-70b-versatile, qwen-2.5-coder-32b)")
+    .option("-m, --model <model>", "Model ID to use (e.g. deepseek/deepseek-v4-pro, openai/gpt-oss-120b)")
+    .option("-p, --provider <provider>", "Provider for model IDs not in the built-in list: velona | groq (default: velona)")
     .option("-y, --yes", "Auto-approve all tool actions without interactive confirmation", false)
-    .option("-k, --api-key <key>", "Groq API key")
+    .option("-k, --api-key <key>", "API key for the selected model's provider")
     .option("-t, --temperature <temperature>", "Sampling temperature (default: 0.2)", parseFloat)
     .option("--max-turns <turns>", "Maximum reasoning turns per prompt (default: 60)", parseInt)
     .option("-d, --cwd <path>", "Custom working directory for operations")
@@ -28,6 +29,7 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
   const config = new Config({
     apiKey: options.apiKey,
     model: options.model,
+    provider: options.provider,
     autoApprove: options.yes,
     temperature: options.temperature,
     maxTurns: options.maxTurns,

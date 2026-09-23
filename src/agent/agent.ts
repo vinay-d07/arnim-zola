@@ -5,7 +5,7 @@ import { confirm } from "@inquirer/prompts";
 import { Config } from "../config/config.js";
 import { ToolRegistry } from "../tools/registry.js";
 import { bashTool } from "../tools/bash_tool.js";
-import { GroqClient, GroqToolCall } from "./groq.js";
+import { LLMClient, ToolCall, isInsufficientCreditsError, isPayloadTooLargeError } from "./llm.js";
 import { ConversationContext } from "./context.js";
 import { TerminalUI } from "../ui/terminal.js";
 
@@ -18,7 +18,7 @@ function truncate(text: string, maxLen: number): string {
 export class Agent {
   private config: Config;
   private registry: ToolRegistry;
-  private groq: GroqClient;
+  private llm: LLMClient;
   private context: ConversationContext;
   /** Lazily detected once per session: undefined = not yet checked, null = no verify command available. */
   private verifyCommand: string | null | undefined = undefined;
@@ -26,13 +26,23 @@ export class Agent {
   constructor(config: Config) {
     this.config = config;
     this.registry = new ToolRegistry();
-    this.groq = new GroqClient(config.apiKey, config.model, config.temperature);
+    this.llm = this.createClient();
     this.context = new ConversationContext(config.cwd, config.model);
+  }
+
+  private createClient(): LLMClient {
+    return new LLMClient(
+      this.config.getApiKey(),
+      this.config.getProvider().baseURL,
+      this.config.model,
+      this.config.temperature
+    );
   }
 
   public setModel(modelId: string): boolean {
     if (this.config.setModel(modelId)) {
-      this.groq.setModel(modelId);
+      // Models can live on different providers, each with its own base URL and key.
+      this.llm = this.createClient();
       this.context.setModel(modelId);
       return true;
     }
@@ -52,6 +62,8 @@ export class Agent {
 
     let currentTurn = 0;
     const maxTurns = this.config.maxTurns;
+    let payloadTooLargeRetries = 0;
+    const MAX_PAYLOAD_TOO_LARGE_RETRIES = 3;
 
     while (currentTurn < maxTurns) {
       currentTurn++;
@@ -71,18 +83,22 @@ export class Agent {
 
       let streamedText = "";
       let hasStartedStreamingText = false;
+      let hasStreamedReasoning = false;
 
       let result;
       try {
-        result = await this.groq.streamCompletion(messages, tools, {
+        result = await this.llm.streamCompletion(messages, tools, {
           onReasoning: (token) => {
             if (spinner.isSpinning) spinner.stop();
+            hasStreamedReasoning = true;
             process.stdout.write(chalk.gray.italic(token));
           },
           onToken: (token) => {
             if (spinner.isSpinning) spinner.stop();
             if (!hasStartedStreamingText) {
               hasStartedStreamingText = true;
+              // Separate the answer from the gray reasoning stream that precedes it.
+              if (hasStreamedReasoning) process.stdout.write("\n\n");
             }
             process.stdout.write(token);
           },
@@ -92,14 +108,31 @@ export class Agent {
           onRetry: (attempt, maxAttempts, reason) => {
             if (spinner.isSpinning) spinner.stop();
             TerminalUI.warning(
-              `Groq had a transient error (${reason}). Retrying ${attempt}/${maxAttempts}...`
+              `${this.config.getProvider().name} had a transient error (${reason}). Retrying ${attempt}/${maxAttempts}...`
             );
             spinner.start();
           },
         });
       } catch (err: any) {
         if (spinner.isSpinning) spinner.stop();
-        TerminalUI.error(`Groq API error: ${err.message}`);
+
+        if (isPayloadTooLargeError(err) && payloadTooLargeRetries < MAX_PAYLOAD_TOO_LARGE_RETRIES) {
+          payloadTooLargeRetries++;
+          if (this.context.compact()) {
+            TerminalUI.warning(
+              "Request was too large for the model (413). Compacting conversation history and retrying..."
+            );
+            currentTurn--; // don't burn a turn on a request that never reached the model
+            continue;
+          }
+        }
+
+        if (isInsufficientCreditsError(err)) {
+          TerminalUI.error(`${this.config.getProvider().name} wallet balance is too low for this request. Top up and retry.`);
+          return;
+        }
+
+        TerminalUI.error(`${this.config.getProvider().name} API error: ${err.message}`);
         return;
       }
 
@@ -110,7 +143,11 @@ export class Agent {
         console.log();
       }
 
-      this.context.recordUsage(result.promptTokens, result.completionTokens);
+      this.context.recordUsage(
+        result.promptTokens,
+        result.completionTokens,
+        result.usageReported ? messages.length : undefined
+      );
 
       // Check if model decided to make tool calls
       if (result.toolCalls && result.toolCalls.length > 0) {
@@ -146,7 +183,7 @@ export class Agent {
   }
 
   /** Returns true if this call successfully wrote or edited a file, so the caller knows whether to re-verify. */
-  private async handleToolCall(tc: GroqToolCall): Promise<boolean> {
+  private async handleToolCall(tc: ToolCall): Promise<boolean> {
     const toolName = tc.function.name;
     let params: Record<string, any> = {};
 
