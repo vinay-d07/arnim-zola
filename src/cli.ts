@@ -8,8 +8,8 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
   const program = new Command();
 
   program
-    .name("groq-code")
-    .description("A lightweight Claude Code alternative for any OpenAI-compatible LLM provider (Velona, Groq)")
+    .name("zola")
+    .description("A lightweight coding agent harness for any OpenAI-compatible LLM provider (Velona, Groq)")
     .version("1.0.0")
     .argument("[prompt...]", "Optional one-shot prompt to execute")
     .option("-m, --model <model>", "Model ID to use (e.g. deepseek/deepseek-v4-pro, openai/gpt-oss-120b)")

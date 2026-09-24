@@ -1,6 +1,6 @@
-# ARNIM ZOLA (Claude Code Alternative in TypeScript)
+# ARNIM ZOLA — A Coding Agent Harness in TypeScript
 
-> A blazing fast, lightweight **Claude Code** alternative powered by **Groq LLM** inference, built with **TypeScript**.
+> A fast, lightweight **coding agent harness** for any OpenAI-compatible LLM provider (Velona, Groq), built with **TypeScript**.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-blue.svg)](https://www.typescriptlang.org/)
 [![Groq](https://img.shields.io/badge/LLM-Groq%20Cloud-orange.svg)](https://groq.com/)
@@ -102,7 +102,7 @@ zola "Create an Express server in server.js on port 3000" --yes
 ```text
 Usage: groq-code [options] [prompt...]
 
-A high-speed, lightweight Claude Code alternative powered by Groq LLM
+A lightweight coding agent harness for any OpenAI-compatible LLM provider (Velona, Groq)
 
 Arguments:
   prompt                           Optional one-shot prompt to execute

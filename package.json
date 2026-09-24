@@ -1,11 +1,21 @@
 {
-  "name": "zola",
+  "name": "@vinay-d02/zola",
   "version": "1.0.0",
-  "description": "A lightweight, powerful Claude Code alternative powered by Groq LLM in TypeScript",
+  "description": "A lightweight coding agent harness for any OpenAI-compatible LLM provider (Velona, Groq), written in TypeScript",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "zola": "./dist/index.js"
+  },
+  "author": "vinay <vinaydhh@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vinay-d07/arnim-zola.git"
+  },
+  "homepage": "https://github.com/vinay-d07/arnim-zola#readme",
+  "bugs": "https://github.com/vinay-d07/arnim-zola/issues",
+  "engines": {
+    "node": ">=18"
   },
   "scripts": {
     "build": "tsup",
@@ -18,7 +28,7 @@
     "dist"
   ],
   "keywords": [
-    "claude-code",
+    "agent-harness",
     "groq",
     "ai",
     "coding-agent",
@@ -26,7 +36,7 @@
     "cli",
     "typescript"
   ],
-  "author": "",
+  
   "license": "MIT",
   "dependencies": {
     "@inquirer/prompts": "^8.7.1",
