@@ -5,9 +5,19 @@ import { input, select } from "@inquirer/prompts";
 import { Agent } from "../agent/agent.js";
 import { TerminalUI } from "./terminal.js";
 import { AVAILABLE_MODELS, DEFAULT_MODEL } from "../config/config.js";
+import { LoadProjectInstructions } from "../agent/system_prompt.js";
 
 export async function startRepl(agent: Agent): Promise<void> {
   TerminalUI.banner("1.0.0", agent.getConfig().model);
+
+  const instructions = LoadProjectInstructions(agent.getConfig().cwd);
+
+  if (instructions) {
+    TerminalUI.info(
+      `Loaded project instructions from ${chalk.cyan(instructions.filename)}` +
+      (instructions.truncated ? chalk.yellow(" (truncated)") : "")
+    );
+  }
 
   while (true) {
     let userInput: string;
@@ -67,6 +77,12 @@ async function handleSlashCommand(
     case "/reset":
       agent.getContext().reset();
       TerminalUI.success("Conversation history cleared. Context reset to fresh state.");
+      {
+        const instructions = LoadProjectInstructions(agent.getConfig().cwd);
+        if (instructions) {
+          TerminalUI.info(`Reloaded project instructions from ${chalk.cyan(instructions.filename)}`);
+        }
+      }
       return "handled";
 
     case "/compact":

@@ -3,6 +3,41 @@ import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 
+export const PROJECT_INSTRUCTIONS_FILES = ["ZOLA.md", "AGENTS.md"];
+export const MAX_PROJECT_INSTRUCTIONS_CHARS = 20000
+export interface ProjectInstructions {
+  filename: string,
+  content: string,
+  truncated: boolean
+}
+
+export function LoadProjectInstructions(cwd: string): ProjectInstructions | null {
+
+  for (const filename of PROJECT_INSTRUCTIONS_FILES) {
+    const filePath = path.join(cwd, filename);
+
+
+    try {
+      if (!fs.statSync(filePath).isFile()) continue;
+      let content = fs.readFileSync(filePath, 'utf-8').trim();
+      if (!content) continue;
+      const truncated = content.length > MAX_PROJECT_INSTRUCTIONS_CHARS;
+      if (truncated) {
+        content = content.slice(0, MAX_PROJECT_INSTRUCTIONS_CHARS) + `\n\n [...${filename} was truncated at ${MAX_PROJECT_INSTRUCTIONS_CHARS} chars...]`;
+      }
+      return { filename, content, truncated }
+
+
+    } catch (error) {
+
+    }
+  }
+  return null;
+}
+
+
+
+
 export function getSystemPrompt(cwd: string): string {
   const platform = os.platform();
   const arch = os.arch();
@@ -34,6 +69,20 @@ export function getSystemPrompt(cwd: string): string {
   } catch {
     topLevelSummary = "Unable to read directory";
   }
+
+  const instructions = LoadProjectInstructions(cwd);
+  const ProjectInstructionsSection = instructions
+    ? `
+
+## Project Instructions (from ${instructions.filename})
+The user has provided the following project-specific instructions. Follow them; they take
+precedence over the general guidelines above when the two conflict.
+
+<project_instructions>
+${instructions.content}
+</project_instructions>
+`
+    : ""
 
   return `You are Groq Code, an expert agentic AI coding assistant and CLI pair programmer.
 You are running directly in the user's terminal environment.
@@ -76,5 +125,6 @@ ${gitInfo}
    - State a brief 1-line thought before invoking tools if needed.
    - When answering without tool calls, use clear GitHub-flavored markdown.
    - If an error occurs during a tool execution, diagnose the issue and try an alternative approach.
+   ${ProjectInstructionsSection}
 `;
 }

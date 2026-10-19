@@ -3,6 +3,7 @@ import path from "node:path";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { ConversationContext } from "../src/agent/context.js";
 import { Config, AVAILABLE_MODELS } from "../src/config/config.js";
+import { getSystemPrompt, LoadProjectInstructions } from "../src/agent/system_prompt.js";
 
 async function runTests() {
   console.log("🧪 Starting Groq Code Test Suite...\n");
@@ -213,7 +214,54 @@ async function runTests() {
   assert(defaultCfg.model === "deepseek/deepseek-v4-pro", "Default model is DeepSeek V4 Pro on Velona");
   assert(defaultCfg.getProvider().baseURL === "https://velona.in/v1", "Default model routes to the Velona OpenAI-compatible endpoint");
   assert(defaultCfg.maxTurns === 60, "Default maxTurns raised to 60 for multi-file app builds");
+ 
 
+  console.log("\nN. Project Instructions (AGENTS.md / ZOLA.md):");
+  {
+    const projDir = path.join(testDir, "instructions_proj");
+    fs.mkdirSync(projDir, { recursive: true });
+
+    // No file -> null, and prompt has no instructions section
+    assert(LoadProjectInstructions(projDir) === null, "Returns null when no instructions file exists");
+    assert(
+      !getSystemPrompt(projDir).includes("<project_instructions>"),
+      "System prompt has no instructions section without a file"
+    );
+
+    // AGENTS.md is picked up
+    fs.writeFileSync(path.join(projDir, "AGENTS.md"), "Always use pnpm.");
+    const fromAgents = LoadProjectInstructions(projDir);
+    assert(fromAgents?.filename === "AGENTS.md", "Loads AGENTS.md");
+    assert(
+      getSystemPrompt(projDir).includes("Always use pnpm."),
+      "AGENTS.md content appears in system prompt"
+    );
+
+    // ZOLA.md wins over AGENTS.md
+    fs.writeFileSync(path.join(projDir, "ZOLA.md"), "Zola-specific rule.");
+    const fromZola = LoadProjectInstructions(projDir);
+    assert(fromZola?.filename === "ZOLA.md", "ZOLA.md takes priority over AGENTS.md");
+    assert(!getSystemPrompt(projDir).includes("Always use pnpm."), "Only one file is loaded");
+
+    // Empty file is skipped -> falls back to AGENTS.md
+    fs.writeFileSync(path.join(projDir, "ZOLA.md"), "   \n  ");
+    assert(LoadProjectInstructions(projDir)?.filename === "AGENTS.md", "Empty ZOLA.md falls back to AGENTS.md");
+
+    // Huge file is truncated
+    fs.writeFileSync(path.join(projDir, "ZOLA.md"), "x".repeat(50000));
+    const big = LoadProjectInstructions(projDir);
+    assert(big?.truncated === true && big.content.length < 21000, "Oversized file is truncated");
+
+    // Survives /clear (reset re-reads the file)
+    fs.writeFileSync(path.join(projDir, "ZOLA.md"), "Rule v1");
+    const ctx = new ConversationContext(projDir, Object.keys(AVAILABLE_MODELS)[0]);
+    fs.writeFileSync(path.join(projDir, "ZOLA.md"), "Rule v2");
+    ctx.reset();
+    assert(
+      String(ctx.getMessages()[0].content).includes("Rule v2"),
+      "reset() picks up edited instructions"
+    );
+  }
   // Cleanup scratch directory
   try {
     fs.rmSync(testDir, { recursive: true, force: true });
@@ -227,6 +275,8 @@ async function runTests() {
     process.exit(1);
   }
 }
+
+
 
 runTests().catch((err) => {
   console.error("Test execution failed:", err);

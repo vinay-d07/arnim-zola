@@ -147,6 +147,18 @@ Inside the REPL session, use slash commands for quick control:
 
 ---
 
+## Project instructions
+
+Create an `AGENTS.md` (or `ZOLA.md`) in your project root and Zola will follow it:
+
+    # AGENTS.md
+    - Use pnpm, not npm.
+    - Run `pnpm test` after every change.
+    - Don't edit files under `legacy/`.
+
+If both files exist, `ZOLA.md` is used. The file is re-read on `/clear`.
+
+---
 ## 🏗️ Project Architecture
 
 ```
