@@ -126,7 +126,11 @@ export const AVAILABLE_MODELS: Record<string, ModelOption> = {
   },
 };
 
-export const DEFAULT_MODEL = "deepseek/deepseek-v4-pro";
+export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderId, string> = {
+  velona: "deepseek/deepseek-v4-pro",
+  groq: "openai/gpt-oss-120b",
+};
+export const DEFAULT_MODEL = DEFAULT_MODEL_BY_PROVIDER.velona;
 
 export interface ConfigOptions {
   apiKey?: string;
@@ -148,6 +152,8 @@ export class Config {
   public maxTurns: number;
   public cwd: string;
   public temperature: number;
+  /** True when --model / --provider / env / rc already decided the provider, so we don't ask. */
+  private providerDecided: boolean;
   /** Provider used for models not listed in AVAILABLE_MODELS (Velona serves 300+ ids we don't enumerate). */
   private fallbackProvider: ProviderId;
   /** Keys are per provider so /model can hop between a Velona and a Groq model mid-session. */
@@ -156,16 +162,21 @@ export class Config {
   constructor(cliOptions: ConfigOptions = {}) {
     const rcConfig = this.loadRcConfig();
 
-    this.model =
-      cliOptions.model ||
-      process.env.LLM_MODEL ||
-      process.env.GROQ_MODEL ||
-      rcConfig.model ||
-      DEFAULT_MODEL;
+    const chosenModel = cliOptions.model || process.env.LLM_MODEL || process.env.GROQ_MODEL || rcConfig.model;
+    this.providerDecided = Boolean(chosenModel);
+    this.model = chosenModel || DEFAULT_MODEL;
 
     const envProvider = process.env.LLM_PROVIDER;
     this.fallbackProvider = (isProviderId(cliOptions.provider) ? cliOptions.provider : undefined) || (isProviderId(envProvider) ? envProvider : undefined) ||
       (isProviderId(rcConfig.provider) ? rcConfig.provider : undefined) || "velona";
+
+    // An explicit provider with no explicit model starts on that provider's default model
+    const providerWasChosen =
+      isProviderId(cliOptions.provider) || isProviderId(envProvider) || isProviderId(rcConfig.provider);
+    if (!this.providerDecided && providerWasChosen) {
+      this.model = DEFAULT_MODEL_BY_PROVIDER[this.fallbackProvider];
+      this.providerDecided = true;
+    }
 
     for (const [id, provider] of Object.entries(PROVIDERS) as [ProviderId, ProviderOption][]) {
       const key = process.env[provider.apiKeyEnv];
@@ -179,8 +190,8 @@ export class Config {
       cliOptions.autoApprove !== undefined
         ? cliOptions.autoApprove
         : process.env.GROQ_AUTO_APPROVE === "true"
-        ? true
-        : rcConfig.autoApprove || false;
+          ? true
+          : rcConfig.autoApprove || false;
 
     this.maxTurns =
       cliOptions.maxTurns ||
@@ -231,6 +242,35 @@ export class Config {
     const existing = this.getApiKey();
     if (existing.trim().length > 0) {
       return existing;
+    }
+
+    if (!this.providerDecided) {
+      const providersWithKeys = Object.keys(this.apiKeys) as ProviderId[];
+
+      // Exactly one provider already has a saved key: use it without asking
+      const onlyKeyed = providersWithKeys.length === 1 ? providersWithKeys[0] : undefined;
+      if (onlyKeyed) {
+        console.log(
+          chalk.dim(`Using ${PROVIDERS[onlyKeyed].name} (found ${PROVIDERS[onlyKeyed].apiKeyEnv}).`)
+        );
+      }
+
+      const chosen: ProviderId =
+        onlyKeyed ??
+        await select<ProviderId>({
+          message: "Which provider do you want to use?",
+          choices: (Object.entries(PROVIDERS) as [ProviderId, ProviderOption][]).map(([id, p]) => ({
+            name: p.name,
+            value: id,
+            description: `Default model: ${DEFAULT_MODEL_BY_PROVIDER[id]}`,
+          })),
+        });
+
+      this.fallbackProvider = chosen;
+      this.model = DEFAULT_MODEL_BY_PROVIDER[chosen];
+
+      const savedKey = this.getApiKey();
+      if (savedKey) return savedKey;
     }
 
     const providerId = this.getProviderId();
