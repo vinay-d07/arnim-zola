@@ -19,12 +19,17 @@
   - `list_dir`: Directory tree explorer with file size metadata and depth control.
   - `grep_search`: Fast regex/text search across all workspace files.
   - `find_files`: Glob-based file pattern finder.
-  - `run_command`: Cross-platform terminal command execution (PowerShell/Bash) with timeout and safety controls.
+  - `run_command`: Cross-platform terminal command execution (PowerShell/Bash) with timeout 
+  and safety controls.
+  - `web_fetch`: Fetches web content from a URL, turnsdown the HTML to md with proper 
+  character limits.
 - 💬 **Interactive Terminal REPL & One-Shot Mode**:
   - Use interactively (`zola`) or in one-shot script mode (`zola "add unit tests"`).
   - Slash commands: `/help`, `/model`, `/compact`, `/clear`, `/tokens`, `/init`, `/exit`.
-- 🛡️ **Safety Guardrails**: Asks for user confirmation before modifying files or executing terminal commands (can be auto-approved with `-y`).
-- 📊 **Token & Cost Tracking**: Live tracking of prompt/completion tokens and estimated Groq usage cost.
+- 🛡️ **Safety Guardrails**: Asks for user confirmation before modifying files or executing 
+  terminal commands (can be auto-approved with `-y`).
+- 📊 **Token & Cost Tracking**: Live tracking of prompt/completion tokens and estimated Groq 
+  usage cost.
 
 ---
 
