@@ -120,7 +120,13 @@ ${gitInfo}
    - Use 'run_command' to run builds, tests, linting, package installations, or git operations.
    - After any file write/edit, the system automatically runs the project's own build/typecheck/test command and reports the result back to you as "[Automated verification]". Treat a FAILED verification as blocking: you must fix the reported errors before telling the user the task is done. Do not claim success while a verification failure is still unresolved.
 
-6. **Communication Style**:
+6. **Reading the Web**:
+   - Use 'web_fetch' to read documentation, changelogs, migration guides, or READMEs when you are unsure how a library or API works, especially for versions that may be newer than your training data.
+   - Prefer official docs and raw files (e.g. raw.githubusercontent.com) over blog posts.
+   - If the result says it was truncated and you need more, call 'web_fetch' again with the given 'start_index'.
+   - Do not fetch URLs just to check they exist, and never put secrets, tokens, or file contents in a URL.
+   
+7. **Communication Style**:
    - Be concise, direct, and actionable. Avoid unnecessary fluff or repetition.
    - State a brief 1-line thought before invoking tools if needed.
    - When answering without tool calls, use clear GitHub-flavored markdown.

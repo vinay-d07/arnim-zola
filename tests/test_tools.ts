@@ -4,7 +4,7 @@ import { ToolRegistry } from "../src/tools/registry.js";
 import { ConversationContext } from "../src/agent/context.js";
 import { Config, AVAILABLE_MODELS } from "../src/config/config.js";
 import { getSystemPrompt, LoadProjectInstructions } from "../src/agent/system_prompt.js";
-
+import http from "node:http";
 async function runTests() {
   console.log("🧪 Starting Groq Code Test Suite...\n");
   let passed = 0;
@@ -32,10 +32,10 @@ async function runTests() {
   // Test 1: Tool Registry
   console.log("1. Tool Registry & Schemas:");
   const tools = registry.getAllTools();
-  assert(tools.length === 9, "Registered 9 built-in tools");
+  assert(tools.length === 10, "Registered 10 (previously 9) built-in tools");
 
   const groqTools = registry.getGroqTools();
-  assert(groqTools.length === 9, "Generated 9 Groq-compatible tool schemas");
+  assert(groqTools.length === 10, "Generated 10 (previously 9) Groq-compatible tool schemas");
   assert(
     groqTools.every((t) => t.type === "function" && t.function.name && t.function.parameters),
     "All tools conform to OpenAI/Groq function format"
@@ -214,7 +214,7 @@ async function runTests() {
   assert(defaultCfg.model === "deepseek/deepseek-v4-pro", "Default model is DeepSeek V4 Pro on Velona");
   assert(defaultCfg.getProvider().baseURL === "https://velona.in/v1", "Default model routes to the Velona OpenAI-compatible endpoint");
   assert(defaultCfg.maxTurns === 60, "Default maxTurns raised to 60 for multi-file app builds");
- 
+
 
   console.log("\nN. Project Instructions (AGENTS.md / ZOLA.md):");
   {
@@ -262,10 +262,82 @@ async function runTests() {
       "reset() picks up edited instructions"
     );
   }
+
+
+  /// web fetch test
+  console.log("\n10. Web Fetch (web_fetch):");
+  {
+    const longText = "x".repeat(30000);
+    const server = http.createServer((req, res) => {
+      if (req.url === "/page") {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(
+          "<html><head><title>Test Page</title><script>alert(1)</script></head>" +
+          "<body><nav>NAV_LINKS</nav><main><h2>Install</h2><p>Run <code>npm i zola</code></p>" +
+          "<ul><li>one</li><li>two</li></ul></main></body></html>"
+        );
+      } else if (req.url === "/data.json") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ hello: "world" }));
+      } else if (req.url === "/long.txt") {
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.end(longText);
+      } else if (req.url === "/image.png") {
+        res.writeHead(200, { "Content-Type": "image/png" });
+        res.end(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+      } else {
+        res.writeHead(404);
+        res.end("not found");
+      }
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as { port: number }).port;
+    const base = `http://127.0.0.1:${port}`;
+
+    try {
+      const pageRes = await registry.executeTool("web_fetch", { url: `${base}/page` }, context);
+      assert(pageRes.success, "web_fetch fetched an HTML page", pageRes.output);
+      assert(pageRes.output.includes("# Test Page"), "Page title added as heading");
+      assert(pageRes.output.includes("## Install"), "HTML headings converted to markdown");
+      assert(pageRes.output.includes("`npm i zola`"), "Inline code converted to markdown");
+      assert(!pageRes.output.includes("alert(1)"), "Script tags stripped");
+      assert(!pageRes.output.includes("NAV_LINKS"), "Content outside <main> dropped");
+
+      const jsonRes = await registry.executeTool("web_fetch", { url: `${base}/data.json` }, context);
+      assert(jsonRes.success && jsonRes.output.includes('"hello":"world"'), "JSON returned as is");
+
+      const longRes = await registry.executeTool("web_fetch", { url: `${base}/long.txt`, max_chars: 10000 }, context);
+      assert(longRes.success && longRes.output.includes("start_index=10000"), "Long content truncated with a start_index hint");
+
+      const nextRes = await registry.executeTool("web_fetch", { url: `${base}/long.txt`, max_chars: 50000, start_index: 10000 }, context);
+      assert(nextRes.success && nextRes.output.includes("chars 10000-30000 of 30000"), "start_index reads the next chunk");
+
+      const imgRes = await registry.executeTool("web_fetch", { url: `${base}/image.png` }, context);
+      assert(!imgRes.success && imgRes.output.includes("not text or HTML"), "Binary content rejected");
+
+      const notFoundRes = await registry.executeTool("web_fetch", { url: `${base}/missing` }, context);
+      assert(!notFoundRes.success && notFoundRes.output.includes("HTTP 404"), "HTTP errors reported");
+    } finally {
+      server.close();
+    }
+
+    const badUrlRes = await registry.executeTool("web_fetch", { url: "not a url" }, context);
+    assert(!badUrlRes.success && badUrlRes.output.includes("Invalid URL"), "Invalid URL rejected");
+
+    const fileRes = await registry.executeTool("web_fetch", { url: "file:///etc/passwd" }, context);
+    assert(!fileRes.success && fileRes.output.includes("Unsupported URL scheme"), "file:// scheme rejected");
+
+    const denyRes = await registry.executeTool(
+      "web_fetch",
+      { url: "https://example.com" },
+      { cwd: testDir, autoApprove: false, onConfirm: async () => false }
+    );
+    assert(!denyRes.success && denyRes.output.includes("denied"), "Respects user denial");
+  }
   // Cleanup scratch directory
   try {
     fs.rmSync(testDir, { recursive: true, force: true });
-  } catch {}
+  } catch { }
 
   console.log(`\n================================`);
   console.log(`Results: ${passed} passed, ${failed} failed`);

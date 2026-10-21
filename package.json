@@ -48,12 +48,14 @@
     "marked": "^15.0.12",
     "marked-terminal": "^7.3.0",
     "openai": "^7.23.0",
-    "ora": "^9.4.1"
+    "ora": "^9.4.1",
+    "turndown": "^7.2.4"
   },
   "devDependencies": {
     "@types/diff": "^7.0.2",
     "@types/marked-terminal": "^6.1.1",
     "@types/node": "^26.4.1",
+    "@types/turndown": "^5.0.6",
     "tsup": "^8.5.1",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2"

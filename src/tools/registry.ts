@@ -5,7 +5,7 @@ import { bashTool } from "./bash_tool.js";
 import { scaffoldProjectTool } from "./scaffold_tool.js";
 import { createTodoWriteTool } from "./todo_tool.js";
 import { TodoStore } from "./todo_store.js";
-
+import { webFetchTool } from "./web_tools.js";
 export class ToolRegistry {
   private tools: Map<string, Tool> = new Map();
   private todoStore = new TodoStore();
@@ -20,6 +20,7 @@ export class ToolRegistry {
     this.registerTool(bashTool);
     this.registerTool(scaffoldProjectTool);
     this.registerTool(createTodoWriteTool(this.todoStore));
+    this.registerTool(webFetchTool)
   }
 
   public getTodoStore(): TodoStore {
